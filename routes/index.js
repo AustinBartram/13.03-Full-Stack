@@ -1,91 +1,108 @@
 var express = require('express');
 var router = express.Router();
 
-/* GET home page */
-router.get('/', function (req, res, next) {
-  try {
-    req.db.query('SELECT * FROM todos;', (err, results) => {
-      if (err) {
-        console.error('Error fetching todos:', err);
-        return res.status(500).send('Error fetching todos');
-      }
-      res.render('index', { title: 'My Simple TODO', todos: results });
-    });
-  } catch (error) {
-    console.error('Error fetching items:', error);
-    res.status(500).send('Error fetching items');
-  }
+/* HOME PAGE — returns HTML */
+router.get('/', function (req, res) {
+  req.db.query("SELECT * FROM todos;", (err, results) => {
+    if (err) return res.send("DB Error");
+
+    let list = results.map(
+      todo => `
+        <li>
+          <!-- COMPLETE / NOT COMPLETE BUTTON -->
+          <form action="/toggle" method="POST" style="display:inline;">
+            <input type="hidden" name="id" value="${todo.id}">
+            <input type="hidden" name="completed" value="${todo.completed}">
+            <button style="background:none;border:none;color:blue;cursor:pointer;">
+              ${todo.completed ? "Mark Not Complete" : "Mark Complete"}
+            </button>
+          </form>
+
+          <!-- TASK TEXT (no line-through) -->
+          <span>${todo.task}</span>
+
+          <!-- EDIT FORM -->
+          <form action="/edit" method="POST" style="display:inline;">
+            <input type="hidden" name="id" value="${todo.id}">
+            <input type="text" name="task" value="${todo.task}">
+            <button>Save</button>
+          </form>
+
+          <!-- DELETE BUTTON -->
+          <form action="/delete" method="POST" style="display:inline;">
+            <input type="hidden" name="id" value="${todo.id}">
+            <button>Delete</button>
+          </form>
+        </li>
+      `
+    ).join("");
+
+    res.send(`
+      <html>
+      <body>
+        <h1>TODO LIST</h1>
+
+        <!-- CREATE FORM -->
+        <form action="/create" method="POST">
+          <input type="text" name="task" placeholder="New task">
+          <button>Add</button>
+        </form>
+
+        <ul>
+          ${list}
+        </ul>
+      </body>
+      </html>
+    `);
+  });
 });
 
 /* CREATE TODO */
-router.post('/create', function (req, res, next) {
+router.post('/create', function (req, res) {
   const { task } = req.body;
 
-  try {
-    req.db.query(
-      'INSERT INTO todos (task, completed) VALUES (?, 0);',
-      [task],
-      (err, results) => {
-        if (err) {
-          console.error('Error adding todo:', err);
-          return res.status(500).send('Error adding todo');
-        }
-        console.log('Todo added successfully:', results);
-        res.redirect('/');
-      }
-    );
-  } catch (error) {
-    console.error('Error adding todo:', error);
-    res.status(500).send('Error adding todo');
-  }
+  if (!task || task.trim() === "")
+    return res.send("<h1>Task cannot be blank</h1><a href='/'>Go Back</a>");
+
+  req.db.query(
+    "INSERT INTO todos (task, completed) VALUES (?, 0);",
+    [task.trim()],
+    () => res.redirect("/")
+  );
 });
 
 /* DELETE TODO */
-router.post('/delete', function (req, res, next) {
-  const { id } = req.body;
-
-  try {
-    req.db.query(
-      'DELETE FROM todos WHERE id = ?;',
-      [id],
-      (err, results) => {
-        if (err) {
-          console.error('Error deleting todo:', err);
-          return res.status(500).send('Error deleting todo');
-        }
-        console.log('Todo deleted successfully:', results);
-        res.redirect('/');
-      }
-    );
-  } catch (error) {
-    console.error('Error deleting todo:', error);
-    res.status(500).send('Error deleting todo');
-  }
+router.post('/delete', function (req, res) {
+  req.db.query(
+    "DELETE FROM todos WHERE id=?;",
+    [req.body.id],
+    () => res.redirect("/")
+  );
 });
 
 /* TOGGLE COMPLETED */
-router.post('/toggle', function (req, res, next) {
-  const { id, completed } = req.body;
+router.post('/toggle', function (req, res) {
+  const newState = req.body.completed === "1" ? 0 : 1;
 
-  const newState = completed === "1" ? 0 : 1;
+  req.db.query(
+    "UPDATE todos SET completed=? WHERE id=?;",
+    [newState, req.body.id],
+    () => res.redirect("/")
+  );
+});
 
-  try {
-    req.db.query(
-      'UPDATE todos SET completed = ? WHERE id = ?;',
-      [newState, id],
-      (err, results) => {
-        if (err) {
-          console.error('Error updating todo state:', err);
-          return res.status(500).send('Error updating todo state');
-        }
-        console.log('Todo state toggled successfully:', results);
-        res.redirect('/');
-      }
-    );
-  } catch (error) {
-    console.error('Error toggling todo state:', error);
-    res.status(500).send('Error updating todo state');
-  }
+/* EDIT TODO */
+router.post('/edit', function (req, res) {
+  const { id, task } = req.body;
+
+  if (!task || task.trim() === "")
+    return res.send("<h1>Task cannot be blank</h1><a href='/'>Go Back</a>");
+
+  req.db.query(
+    "UPDATE todos SET task=? WHERE id=?;",
+    [task.trim(), id],
+    () => res.redirect("/")
+  );
 });
 
 module.exports = router;
